@@ -21,9 +21,19 @@ uint16_t I;
 // There is a delay timer and a sound timer
 
 // Input -> Hex keyboard, 16 keys (0x0 to 0xF)
+/*
+Layout
+1	2	3	C
+4	5	6	D
+7	8	9	E
+A	0	B	F
+*/
 
 // Screen 64x32 pixels monochrome (1bit each pixel)
 uint32_t screen[64];
+
+// Stack 16 16-bit values
+uint16_t stack[16];
 
 #define vx(opcode) registers[((opcode >> 8) & 0x0F)]
 #define vy(opcode) registers[((opcode >> 4) & 0x0F)]
@@ -161,7 +171,7 @@ int main(void)
     time_t t;
     srand((unsigned) time(&t));
 
-    if (SDL_Init(SDL_INIT_VIDEO) != 0){
+    if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0){
 		printf("SDL_Init Error: %s\n", SDL_GetError());
 		return 1;
 	}
@@ -194,7 +204,20 @@ int main(void)
     This will show the new, red contents of the window. */
     SDL_RenderPresent(ren);
     /* Give us time to see the window. */
-    SDL_Delay(5000);
+    
+    
+    SDL_Event e;
+    bool quit = false;
+    while (!quit){
+        while (SDL_PollEvent(&e)) {
+            if (e.type == SDL_QUIT){
+                quit = true;
+            }
+        }
+    }
+
+
+
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
 	SDL_Quit();

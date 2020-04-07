@@ -60,7 +60,8 @@ int init_emulator();
 int init_timers();
 void *emulator_loop(void *arg);
 void *timers_loop(void *arg);
-pthread_mutex_t emulator_mutex;
+pthread_mutex_t emulator_mutex, keys_mutex;
+pthread_cond_t keys_cond = PTHREAD_COND_INITIALIZER;
 uint8_t delay_timer;
 uint8_t sound_timer;
 
@@ -84,6 +85,8 @@ int main(void)
     int err;
 
     /* Init emulator */
+    pthread_mutex_init(&emulator_mutex, NULL);
+    pthread_mutex_init(&keys_mutex, NULL);
     if ((err = init_emulator())) {
         return err;
     }
@@ -101,6 +104,7 @@ int main(void)
 
     /* Destroy mutex */
     pthread_mutex_destroy(&emulator_mutex);
+    pthread_mutex_destroy(&keys_mutex);
 
     return 0;
 }
@@ -174,19 +178,19 @@ static inline void set_key(SDL_Keycode k)
             keys_pressed |= 1 << 10;
             break;
         case SDLK_b:
-            keys_pressed |= 1 << 10;
+            keys_pressed |= 1 << 11;
             break;
         case SDLK_c:
-            keys_pressed |= 1 << 10;
+            keys_pressed |= 1 << 12;
             break;
         case SDLK_d:
-            keys_pressed |= 1 << 10;
+            keys_pressed |= 1 << 13;
             break;
         case SDLK_e:
-            keys_pressed |= 1 << 10;
+            keys_pressed |= 1 << 14;
             break;
         case SDLK_f:
-            keys_pressed |= 1 << 10;
+            keys_pressed |= 1 << 15;
             break;
     }
     pthread_mutex_unlock(&emulator_mutex);
@@ -252,13 +256,21 @@ void event_loop_sdl()
 {
     SDL_Event e;
     bool quit = false;
-    while (!quit){
+    bool locked = false;
+    while (!quit) {
         while (SDL_PollEvent(&e)) {
+            if (!locked) {
+                pthread_mutex_lock(&keys_mutex);
+                locked = true;
+            }
             if (e.type == SDL_QUIT) {
                 quit = true;
             }
             if (e.type == SDL_KEYDOWN) {
                 set_key(e.key.keysym.sym);
+                locked = false;
+                pthread_cond_wait(&keys_cond, &keys_mutex);
+                pthread_mutex_unlock(&keys_mutex);
             }
             if (e.type == SDL_KEYUP) {
                 clear_key(e.key.keysym.sym);
@@ -298,7 +310,6 @@ int init_emulator()
     if ((err = init_timers())) {
         return err;
     }
-    pthread_mutex_init(&emulator_mutex, NULL);
     return 0;
 }
 
@@ -325,16 +336,6 @@ void *timers_loop(void *arg)
         }
         pthread_mutex_unlock(&emulator_mutex);
         usleep(16667);
-    }
-}
-
-void *emulator_loop(void *arg)
-{
-    while (1) {
-        opcode = fetch();
-        //decode_execute();
-        printf("emulator_loop\n");
-        sleep(1);
     }
 }
 
@@ -466,20 +467,18 @@ void decode_execute()
                     pthread_mutex_unlock(&emulator_mutex);
                     break;
                 case 0x0A:
-                    while (1) {
-                        pthread_mutex_lock(&emulator_mutex);
-                        if (keys_pressed) {
-                            int8_t pressed = -1;
-                            uint16_t aux = keys_pressed;
-                            while (aux > 0) {
-                                aux >>= 1;
-                                pressed++;
-                            }
-                            vx = pressed;
-                            break;
-                        }
-                        pthread_mutex_unlock(&emulator_mutex);
+                    pthread_mutex_lock(&keys_mutex);
+                    uint16_t aux = keys_pressed;
+                    pthread_cond_signal(&keys_cond);
+                    pthread_mutex_unlock(&keys_mutex);
+
+                    int8_t pressed = -1;
+                    while (aux > 0) {
+                        aux >>= 1;
+                        pressed++;
                     }
+                    vx = pressed;
+
                     break;
                 case 0x15:
                     pthread_mutex_lock(&emulator_mutex);
@@ -499,14 +498,12 @@ void decode_execute()
                 case 0x33:
                     break;
                 case 0x55:
-                    int i;
-                    for (i = 0; i < ((opcode >> 8) & 0x0F); i++) {
+                    for (int i = 0; i < ((opcode >> 8) & 0x0F); i++) {
                         mem[I+i] = registers[i];
                     }
                     break;
                 case 0x65:
-                    int i;
-                    for (i = 0; i < ((opcode >> 8) & 0x0F); i++) {
+                    for (int i = 0; i < ((opcode >> 8) & 0x0F); i++) {
                         registers[i] = mem[I+i];
                     }
                     break;
@@ -515,5 +512,16 @@ void decode_execute()
                     break;
             }
             break;
+    }
+}
+
+void *emulator_loop(void *arg)
+{
+    sleep(1);
+    while (1) {
+        //opcode = fetch();
+        //printf("emulator_loop\n");
+        opcode = 0xF00A;
+        decode_execute();
     }
 }

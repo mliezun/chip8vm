@@ -27,6 +27,26 @@ uint16_t I;
 // Screen 64x32 pixels monochrome (1bit each pixel)
 uint32_t screen[64];
 
+// Values for bcd sprites
+uint8_t bcd_sprites[16][5] = {
+    {0xF0, 0x90, 0x90, 0x90, 0xF0},
+    {0x20, 0x60, 0x20, 0x20, 0x70},
+    {0xF0, 0x10, 0xF0, 0x80, 0xF0},
+    {0xF0, 0x10, 0xF0, 0x10, 0xF0},
+    {0x90, 0x90, 0xF0, 0x10, 0x10},
+    {0xF0, 0x80, 0xF0, 0x10, 0xF0},
+    {0xF0, 0x80, 0xF0, 0x90, 0xF0},
+    {0xF0, 0x10, 0x20, 0x40, 0x40},
+    {0xF0, 0x90, 0xF0, 0x90, 0xF0},
+    {0xF0, 0x90, 0xF0, 0x10, 0xF0},
+    {0xF0, 0x90, 0xF0, 0x90, 0x90},
+    {0xE0, 0x90, 0xE0, 0x90, 0xE0},
+    {0xF0, 0x80, 0x80, 0x80, 0xF0},
+    {0xE0, 0x90, 0x90, 0x90, 0xE0},
+    {0xF0, 0x80, 0xF0, 0x80, 0xF0},
+    {0xF0, 0x80, 0xF0, 0x80, 0x80}
+};
+
 // Stack 16 16-bit values
 uint16_t stack[16];
 
@@ -310,6 +330,11 @@ int init_emulator()
     if ((err = init_timers())) {
         return err;
     }
+    for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < 5; j++) {
+            mem[i*5+j] = bcd_sprites[i][j];
+        }
+    }
     return 0;
 }
 
@@ -451,6 +476,7 @@ void decode_execute()
             vx = rand() && nn;
             break;
         case 0xD:
+            //TODO: implement
             break;
         case 0xE:
             pthread_mutex_lock(&emulator_mutex);
@@ -494,8 +520,14 @@ void decode_execute()
                     I = I + vx;
                     break;
                 case 0x29:
+                    I = vx*5;
                     break;
                 case 0x33:
+                    uint8_t aux = vx;
+                    for (int i = 2; i >= 0; i--) {
+                        mem[I+i] = aux % 10;
+                        aux /= 10;
+                    }
                     break;
                 case 0x55:
                     for (int i = 0; i < ((opcode >> 8) & 0x0F); i++) {

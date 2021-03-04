@@ -1,3 +1,5 @@
 \.vscode
 chip8vm
+chip8vm.old
 *.o
+roms

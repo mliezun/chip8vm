@@ -13,4 +13,4 @@ main.o: main.c
 	$(CCOMP) $(CCOMPFLAGS) $< -o $@
 
 clean:
-	rm *.o && rm $(EXE)
+	rm -rf *.o && rm -rf $(EXE)

@@ -55,7 +55,8 @@ uint8_t sp = 0;
 uint16_t opcode;
 
 #define fetch() ((mem[pc] << 8) | mem[pc+1])
-#define vx registers[((opcode >> 8) & 0x0F)]
+#define xval ((opcode >> 8) & 0x0F)
+#define vx registers[xval]
 #define vy registers[((opcode >> 4) & 0x0F)]
 #define vf registers[0xF]
 #define v0 registers[0xF]
@@ -518,23 +519,14 @@ void decode_execute()
     // switch on first nibble
     switch (opcode >> 12) {
         case 0x0:
-            if (((opcode >> 4) & 0xF) == 0xE) {
-                switch (opcode & 0xF) {
-                    case 0x0:
-                        //logdisabled:printf("debug: clear screen\n");
-                        cls_sdl();
-                        break;
-                    case 0xE:
-                        --sp;
-                        pc = stack[sp];
-                        break;
-                    
-                    default:
-                        // TODO: handle error
-                        break;
-                }
+            if (opcode == 0x00E0) {
+                cls_sdl();
+            } else if (opcode == 0x00EE) {
+                --sp;
+                pc = stack[sp];
             } else {
-                // TODO: handle error
+                // not implemented
+                exit(1);
             }
             pc += 2;
             break;
@@ -590,25 +582,27 @@ void decode_execute()
                 case 0x3:
                     vx ^= vy;
                     break;
-                case 0x4:
-                    vf = vx + vy > 0xFF;
+                case 0x4: {
+                    int ow = (((int)vx + (int)vy) > 0xFF);
+                    vf = ow;
                     vx += vy;
                     break;
+                }
                 case 0x5:
-                    vf = vx > vy;
+                    vf = vx >= vy;
                     vx -= vy;
                     break;
                 case 0x6:
-                    vf = vx & 1;
-                    vx >>= 1;
+                    vf = vy & 1;
+                    vx = vy >> 1;
                     break;
                 case 0x7:
-                    vf = vy > vx;
+                    vf = vy >= vx;
                     vx = vy - vx;
                     break;
                 case 0xE:
-                    vf = vx >> 7;
-                    vx <<= 1;
+                    vf = vy >> 7;
+                    vx = vy << 1;
                     break;
                 default:
                     //TODO: handle undefined op
@@ -624,29 +618,26 @@ void decode_execute()
             pc += 2;
             break;
         case 0xA:
-            I = nnn & 0xFFF;
+            I = nnn;
             pc += 2;
             break;
         case 0xB:
-            pc = ((v0 + nnn) & 0xFFF);
+            pc = v0 + nnn;
             break;
         case 0xC: {
-            /* random number generator */
             time_t t;
             srand((unsigned) time(&t));
-            vx = rand() && nn;
+            vx = rand() & nn;
             pc += 2;
             break;
         }
         case 0xD:
             {
-                //logdisabled:printf("debug: writing sprite rows=%d\n", opcode & 0xF);
                 int x = vx % 64;
                 vf = 0;
                 for (int i = 0; i < (opcode & 0xF); i++) {
                     int y = (vy + i) % 32;
                     uint8_t sprite = mem[I+i];
-                    // write each bit of sprite from screen[y][x] to screen[y][x+8-1]
                     for (int j = 0; j < 8; j++) {
                         uint8_t sprite_bit = ((sprite >> (8-(j+1))) & 1);
                         uint8_t screen_bit = screen[y][x+j] & 1;
@@ -654,26 +645,8 @@ void decode_execute()
                         if (vf == 0) {
                             vf = screen_bit && !screen_bit_result;
                         }
-                        //logdisabled:printf("debug: writing to screen line=%d, col=%d, colWrapped=%d, bit=%d\n", y, x+j, (x+j)%64, screen_bit_result);
                         screen[y][(x+j)%64] = screen_bit_result;
-                        //usleep(1000000);
                     }
-                    /*
-                    uint64_t screen_line = screen[y];
-                    uint64_t screen_line_result = 0;
-                    for (int j = 0; j < 64; j++) {
-                        if (j >= x && j < x+8) {
-                            int sprite_bit = ((sprite >> (8+x-j)) & 1);
-                            int screen_bit = ((screen_line >> j) & 1);
-                            int screen_bit_result = (sprite_bit ^ screen_bit);
-                            // vf = bit erased?
-                            vf = screen_bit && !screen_bit_result;
-                            screen_line_result |= shift_right(screen_bit_result, j);
-                        } else {
-                            screen_line_result |= (screen_line & shift_right(1, j));
-                        }
-                    }
-                    */
                 }
                 redraw_screen();
             }
@@ -755,14 +728,16 @@ void decode_execute()
                     }
                     break;
                 case 0x55:
-                    for (int i = 0; i < ((opcode >> 8) & 0x0F); i++) {
-                        mem[I++] = registers[i];
+                    for (int i = 0; i <= xval; i++) {
+                        mem[I+i] = registers[i];
                     }
+                    I = I + xval + 1;
                     break;
                 case 0x65:
-                    for (int i = 0; i < ((opcode >> 8) & 0x0F); i++) {
-                        registers[i] = mem[I++];
+                    for (int i = 0; i <= xval; i++) {
+                        registers[i] = mem[I+i];
                     }
+                    I = I + xval + 1;
                     break;
                 default:
                     // TODO: handle error

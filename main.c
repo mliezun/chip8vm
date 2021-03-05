@@ -73,6 +73,13 @@ typedef struct {
     int size;
 } Rom;
 
+typedef struct {
+    SDL_AudioSpec wavSpec;
+    uint32_t wavLength;
+    uint8_t *wavBuffer;
+    SDL_AudioDeviceID deviceId;
+} Audio;
+
 sdl_object sdl;
 
 int init_sdl();
@@ -143,15 +150,17 @@ int runVm(Rom *rom)
     /* Error flag */
     int err;
 
+    Audio audio;
+
+    /* Init sdl objects */
+    if ((err = init_sdl(&audio))) {
+        return err;
+    }
+
     /* Init emulator */
     pthread_mutex_init(&emulator_mutex, NULL);
     pthread_mutex_init(&keys_mutex, NULL);
-    if ((err = init_emulator(rom))) {
-        return err;
-    }
-    
-    /* Init sdl objects */
-    if ((err = init_sdl(&sdl))) {
+    if ((err = init_emulator(rom, &audio))) {
         return err;
     }
     
@@ -190,7 +199,7 @@ int main(int argc, const char *argv[])
     }
 }
 
-int init_sdl()
+int init_sdl(Audio *audio)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0){
 		//logdisabled:printf("SDL_Init Error: %s\n", SDL_GetError());
@@ -217,6 +226,27 @@ int init_sdl()
         SDL_Quit();
         return 1;
     }
+
+    SDL_AudioSpec wavSpec;
+    uint32_t wavLength;
+    uint8_t *wavBuffer;
+    SDL_LoadWAV("beep.wav", &wavSpec, &wavBuffer, &wavLength);
+    SDL_AudioDeviceID deviceId = SDL_OpenAudioDevice(NULL, 0, &wavSpec, NULL, 0);
+    if (deviceId <= 0) {
+        SDL_DestroyWindow(sdl.win);
+        printf("SDL_OpenAudioDevice failed: %s\n", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+    audio->wavSpec = wavSpec;
+    audio->wavLength = wavLength;
+    audio->wavBuffer = wavBuffer;
+    audio->deviceId = deviceId;
+    /*
+    SDL_CloseAudioDevice(deviceId);
+    SDL_FreeWAV(wavBuffer);
+    */
+
     cls_sdl(sdl);
     return 0;
 }
@@ -413,7 +443,7 @@ void cls_sdl()
     /* Give us time to see the window. */
 }
 
-int init_emulator(Rom *rom)
+int init_emulator(Rom *rom, Audio *audio)
 {
     for (int i = 0; i < 16; i++) {
         for (int j = 0; j < 5; j++) {
@@ -427,31 +457,46 @@ int init_emulator(Rom *rom)
         //logdisabled:printf("pthread_create error creating emulator thread\n");
         return err;
     }
-    if ((err = init_timers())) {
+    if ((err = init_timers(audio))) {
         return err;
     }
     return 0;
 }
 
-int init_timers()
+int init_timers(Audio *audio)
 {
+    delay_timer = 0;
+    sound_timer = 0;
     int err;
-    if ((err = pthread_create(&timers_thread, NULL, timers_loop, NULL))) {
+    if ((err = pthread_create(&timers_thread, NULL, timers_loop, audio))) {
         //logdisabled:printf("pthread_create error creating emulator timers thread\n");
         return err;
     }
-    delay_timer = 0;
-    sound_timer = 0;
     return 0;
 }
 
 void *timers_loop(void *arg)
 {
+    Audio *audio = arg;
+    int queued = 0;
     while (1) {
         pthread_mutex_lock(&emulator_mutex);
         if (delay_timer > 0) delay_timer--;
+        if (sound_timer == 0) {
+            SDL_PauseAudioDevice(audio->deviceId, 1);
+            if (!queued) {
+                int err;
+                if ((err = SDL_QueueAudio(audio->deviceId, audio->wavBuffer, audio->wavLength))) {
+                    printf("SDL_QueueAudio failed: %s\n", SDL_GetError());
+                }
+                queued = 1;
+            }
+        }
         if (sound_timer > 0) {
-            if (sound_timer == 1) SDL_PauseAudio(1);
+            if (queued) {
+                SDL_PauseAudioDevice(audio->deviceId, 0);
+                queued = 0;
+            }
             sound_timer--;
         }
         pthread_mutex_unlock(&emulator_mutex);
@@ -660,7 +705,7 @@ void decode_execute()
             pc += 2;
             break;
         case 0xF:
-            switch (opcode & 0xF) {
+            switch (opcode & 0xFF) {
                 // FX07 - Sets VX to the value of the delay timer
                 case 0x07:
                     pthread_mutex_lock(&emulator_mutex);
@@ -690,7 +735,6 @@ void decode_execute()
                     break;
                 case 0x18:
                     pthread_mutex_lock(&emulator_mutex);
-                    // TODO: implement audio
                     sound_timer = vx;
                     pthread_mutex_unlock(&emulator_mutex);
                     break;

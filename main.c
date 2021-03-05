@@ -203,27 +203,27 @@ int main(int argc, const char *argv[])
 int init_sdl(Audio *audio)
 {
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0){
-		//logdisabled:printf("SDL_Init Error: %s\n", SDL_GetError());
+		printf("SDL_Init Error: %s\n", SDL_GetError());
 		return 1;
 	}
     #if defined linux && SDL_VERSION_ATLEAST(2, 0, 8)
     // Disable compositor bypass
     if (!SDL_SetHint(SDL_HINT_VIDEO_X11_NET_WM_BYPASS_COMPOSITOR, "0"))
     {
-        //logdisabled:printf("SDL can not disable compositor bypass!\n");
+        printf("SDL can not disable compositor bypass!\n");
         return 1;
     }
     #endif
     sdl.win = SDL_CreateWindow("chip8vm", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 660, 320, SDL_WINDOW_SHOWN);
     if (sdl.win == NULL){
-        //logdisabled:printf("SDL_CreateWindow Error: %s", SDL_GetError());
+        printf("SDL_CreateWindow Error: %s", SDL_GetError());
         SDL_Quit();
         return 1;
     }
     sdl.ren = SDL_CreateRenderer(sdl.win, -1, SDL_RENDERER_ACCELERATED);
     if (sdl.ren == NULL){
         SDL_DestroyWindow(sdl.win);
-        //logdisabled:printf("SDL_CreateRenderer Error: %s", SDL_GetError());
+        printf("SDL_CreateRenderer Error: %s", SDL_GetError());
         SDL_Quit();
         return 1;
     }
@@ -254,7 +254,6 @@ int init_sdl(Audio *audio)
 
 static inline void redraw_screen()
 {
-    //logdisabled:printf("debug: redrawing screen\n");
     for (int y = 0; y < 32; y++) {
         for (int x = 0; x < 64; x++) {            
             // Creat a rect at pos ( x, y ) that's 10 pixels wide and 10 pixels high.
@@ -455,7 +454,7 @@ int init_emulator(Rom *rom, Audio *audio)
     int err;
     /*check whether the thread creation was successful*/
     if ((err = pthread_create(&emulator_thread, NULL, emulator_loop, rom))) {
-        //logdisabled:printf("pthread_create error creating emulator thread\n");
+        printf("pthread_create error creating emulator thread\n");
         return err;
     }
     if ((err = init_timers(audio))) {
@@ -470,7 +469,7 @@ int init_timers(Audio *audio)
     sound_timer = 0;
     int err;
     if ((err = pthread_create(&timers_thread, NULL, timers_loop, audio))) {
-        //logdisabled:printf("pthread_create error creating emulator timers thread\n");
+        printf("pthread_create error creating emulator timers thread\n");
         return err;
     }
     return 0;
@@ -756,7 +755,6 @@ void *emulator_loop(void *arg)
     }
     while (1) {
         opcode = fetch();
-        //logdisabled:printf("opcode: 0x%x - pc: 0x%x\n", opcode, pc);
         decode_execute();
         usleep(1200);
     }

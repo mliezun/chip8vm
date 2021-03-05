@@ -415,6 +415,11 @@ void cls_sdl()
 
 int init_emulator(Rom *rom)
 {
+    for (int i = 0; i < 16; i++) {
+        for (int j = 0; j < 5; j++) {
+            mem[i*5+j] = bcd_sprites[i][j];
+        }
+    }
     /*creates a new thread with default attributes and NULL passed as the argument to the start routine*/
     int err;
     /*check whether the thread creation was successful*/
@@ -424,11 +429,6 @@ int init_emulator(Rom *rom)
     }
     if ((err = init_timers())) {
         return err;
-    }
-    for (int i = 0; i < 16; i++) {
-        for (int j = 0; j < 5; j++) {
-            mem[i*5+j] = bcd_sprites[i][j];
-        }
     }
     return 0;
 }
@@ -447,7 +447,6 @@ int init_timers()
 
 void *timers_loop(void *arg)
 {
-    usleep(16667);
     while (1) {
         pthread_mutex_lock(&emulator_mutex);
         if (delay_timer > 0) delay_timer--;
